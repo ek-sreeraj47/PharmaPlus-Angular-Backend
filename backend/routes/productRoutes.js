@@ -1,7 +1,7 @@
 const express = require('express');
 const { Types } = require('mongoose');
 const router = express.Router();
-const Product = require('../models/Product'); // ensure casing/filename matches
+const Product = require('../models/product'); // ensure casing/filename matches
 
 // Build absolute image URL if desired
 const withBase = (path) => {
