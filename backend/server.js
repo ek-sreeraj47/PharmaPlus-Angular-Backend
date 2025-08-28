@@ -1,31 +1,107 @@
+// server.js
 const express = require('express');
 const mongoose = require('mongoose');
-const authRoutes = require("./routes/auth.route");
 const cors = require('cors');
 require('dotenv').config();
 
-const app = express();
-app.use(express.json());
-app.use(cors());
-app.use("/api/auth", authRoutes);
+// --- Config ---
+const PORT = process.env.PORT || 5000;
+const MONGODB_URI = process.env.MONGODB_URI;
 
-// Test route
-app.get('/', (req, res) => {
-  res.send('Backend is running ✅');
+// Comma-separated list of allowed origins (can set in Render env):
+// e.g. ALLOWED_ORIGINS=https://pharma-plus-angular-dhuj.vercel.app,http://localhost:4200
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:4200')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+
+// --- App ---
+const app = express();
+app.set('trust proxy', true); // good for Render/Cloud providers
+app.use(express.json());
+
+// CORS (tight allow-list; still allows server-to-server with no Origin header)
+app.use(
+    cors({
+        origin: (origin, cb) => {
+            if (!origin) return cb(null, true);
+            return ALLOWED_ORIGINS.includes(origin)
+                ? cb(null, true)
+                : cb(new Error('Not allowed by CORS'));
+        },
+        credentials: true,
+        optionsSuccessStatus: 200,
+    })
+);
+
+// --- Routes ---
+app.get('/api/health', (req, res) => {
+    res.json({
+        ok: true,
+        uptime: process.uptime(),
+        mongo: mongoose.connection.readyState, // 1 = connected
+    });
 });
+
+// Auth routes
+const authRoutes = require('./routes/auth.route');
+app.use('/api/auth', authRoutes);
 
 // Product routes
 const productRoutes = require('./routes/productRoutes');
 app.use('/api/products', productRoutes);
 
-// Start server after DB connect
-const PORT = process.env.PORT || 5000;
+// Root test route
+app.get('/', (req, res) => {
+    res.send('Backend is running ✅');
+});
 
-mongoose.connect(process.env.MONGODB_URI)
-  .then(() => {
-    console.log('✅ MongoDB connected');
-    app.listen(PORT, () => console.log(`🚀 Server running on http://localhost:${PORT}`));
-  })
-  .catch(err => console.error('❌ DB connection error:', err));
+// 404 handler (for unmatched API routes)
+app.use((req, res, next) => {
+    if (req.path.startsWith('/api')) {
+        return res.status(404).json({ error: 'Not Found' });
+    }
+    return next();
+});
 
+// Error handler
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+    console.error('🚨 Error:', err.message);
+    res.status(500).json({ error: 'Internal Server Error' });
+});
 
+// --- DB + Start ---
+async function start() {
+    try {
+        if (!MONGODB_URI) {
+            throw new Error('MONGODB_URI is not set');
+        }
+
+        await mongoose.connect(MONGODB_URI);
+        console.log('✅ MongoDB connected');
+
+        const server = app.listen(PORT, () =>
+            console.log(`🚀 Server running on port ${PORT}`)
+        );
+
+        // Graceful shutdown
+        const shutdown = (signal) => () => {
+            console.log(`\n${signal} received. Closing server...`);
+            server.close(async () => {
+                await mongoose.connection.close();
+                console.log('🛑 Server closed. MongoDB disconnected.');
+                process.exit(0);
+            });
+        };
+        process.on('SIGINT', shutdown('SIGINT'));
+        process.on('SIGTERM', shutdown('SIGTERM'));
+    } catch (err) {
+        console.error('❌ Startup error:', err);
+        process.exit(1);
+    }
+}
+
+start();
+
+module.exports = app; // optional (useful for tests)
