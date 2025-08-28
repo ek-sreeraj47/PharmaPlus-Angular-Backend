@@ -20,14 +20,28 @@ const app = express();
 app.set('trust proxy', true); // good for Render/Cloud providers
 app.use(express.json());
 
-// CORS (tight allow-list; still allows server-to-server with no Origin header)
+// CORS (allow localhost, specific domains, and *.vercel.app previews)
 app.use(
     cors({
         origin: (origin, cb) => {
-            if (!origin) return cb(null, true);
-            return ALLOWED_ORIGINS.includes(origin)
-                ? cb(null, true)
-                : cb(new Error('Not allowed by CORS'));
+            if (!origin) return cb(null, true); // server-to-server / SSR
+            try {
+                const url = new URL(origin);
+
+                // Always allow *.vercel.app (all preview + prod deployments)
+                if (url.hostname.endsWith('.vercel.app')) {
+                    return cb(null, true);
+                }
+
+                // Explicit allow-list (from env or hardcoded)
+                if (ALLOWED_ORIGINS.includes(origin)) {
+                    return cb(null, true);
+                }
+
+                return cb(new Error(`Not allowed by CORS: ${origin}`));
+            } catch (err) {
+                return cb(new Error('Invalid Origin'), false);
+            }
         },
         credentials: true,
         optionsSuccessStatus: 200,
