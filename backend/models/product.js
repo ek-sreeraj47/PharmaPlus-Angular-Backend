@@ -27,4 +27,4 @@ const productSchema = new Schema({
   stock:    { type: Number }
 }, { timestamps: true });
 
-module.exports = model('Product', productSchema);
+module.exports = model('product', productSchema);
