@@ -2,7 +2,7 @@
 const { Schema, model } = require('mongoose');
 
 const productSchema = new Schema({
-  // keep legacy numeric id if you want deterministic ids
+  // keep legacy numeric id if you wanAt deterministic ids
   id: { type: Number, unique: true, sparse: true },
 
   name: { type: String, required: true, index: true },
